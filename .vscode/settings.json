@@ -1,0 +1,11 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/server/.venv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+    "jupyter.notebookFileRoot": "${fileDirname}",
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/node_modules": true,
+        "**/chroma_db": true,
+        "**/dist": true
+    }
+}

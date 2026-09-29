@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Server (FastAPI :8000)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["main:app", "--host", "127.0.0.1", "--port", "8000"],
+            "cwd": "${workspaceFolder}/server",
+            "python": "${workspaceFolder}/server/.venv/Scripts/python.exe",
+            "justMyCode": true
+        },
+        {
+            "name": "Client (Vite :5173)",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev",
+            "cwd": "${workspaceFolder}/client"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "MantenIA: server + client",
+            "configurations": ["Server (FastAPI :8000)", "Client (Vite :5173)"],
+            "stopAll": true
+        }
+    ]
+}
