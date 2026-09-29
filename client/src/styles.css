@@ -318,11 +318,6 @@ textarea:focus {
   background: var(--superficie);
 }
 
-.chat-cabecera p {
-  margin: 2px 0 0;
-  font-size: 0.9rem;
-}
-
 .controles {
   display: flex;
   align-items: center;
@@ -460,6 +455,54 @@ textarea:focus {
 
 .plan strong {
   color: var(--acento-texto);
+}
+
+.plan-memoria {
+  color: var(--acento-texto);
+  cursor: help;
+}
+
+/* Valoración 👍 / 👎 (aprendizaje) */
+.valoracion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+
+.boton-valorar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--borde);
+  background: var(--superficie);
+  color: var(--texto-tenue);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.boton-valorar:hover:not(:disabled) {
+  border-color: var(--acento);
+  color: var(--texto);
+}
+
+.boton-valorar.activo-positivo {
+  background: var(--acento-suave);
+  border-color: var(--acento);
+  color: var(--acento-texto);
+}
+
+.boton-valorar.activo-negativo {
+  background: var(--error-suave);
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.valoracion-error {
+  flex-basis: 100%;
+  color: var(--error);
 }
 
 .escribiendo {
@@ -974,6 +1017,61 @@ textarea:focus {
   overflow: auto;
   padding: 4px 6px;
   overflow-wrap: break-word;
+}
+
+/* ---------- Página de aprendizaje ---------- */
+.lista-aprendidas {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 980px;
+}
+
+.aprendida {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aprendida-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.aprendida-cabecera > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.aprendida-respuesta {
+  padding: 10px 14px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 18px;
+  text-align: center;
+  color: var(--acento);
+}
+
+.vacio strong {
+  color: var(--texto);
+}
+
+.vacio p {
+  margin: 0;
 }
 
 @media (max-width: 1100px) {

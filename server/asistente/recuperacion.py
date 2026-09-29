@@ -1,4 +1,4 @@
-"""Búsqueda híbrida (embeddings + BM25, fusionadas con RRF) y detección del manual."""
+"""Búsqueda híbrida (embeddings + BM25 + memoria, fusionadas con RRF) y detección del manual."""
 
 import re
 import unicodedata
@@ -46,6 +46,7 @@ class RecuperadorHibrido:
         datos = vectorstore.get(include=["documents", "metadatas"])
         self.docs = [Document(page_content=t, metadata=m, id=i)
                      for i, t, m in zip(datos["ids"], datos["documents"], datos["metadatas"])]
+        self.por_id = {d.id: d for d in self.docs}
         self.bm25 = BM25Okapi([tokenizar(d.page_content) for d in self.docs])
         self.patrones = self._patrones_por_manual()
 
@@ -78,9 +79,14 @@ class RecuperadorHibrido:
         return encontrados[0] if len(encontrados) == 1 else None
 
     # --- Búsqueda ---
-    def buscar_vectorial(self, consulta, k, modelo=None):
+    def embeber(self, texto):
+        """Embedding de la consulta: se calcula una vez y se usa para los manuales y para la memoria."""
+        return self.vs.embeddings.embed_query(texto)
+
+    def buscar_vectorial(self, consulta, k, modelo=None, vector=None):
         filtro = {"modelo": modelo} if modelo else None
-        resultados = self.vs.similarity_search_with_score(consulta, k=k, filter=filtro)
+        vector = vector if vector is not None else self.embeber(consulta)
+        resultados = self.vs.similarity_search_by_vector_with_relevance_scores(vector, k=k, filter=filtro)
         return [(d, round(1 - dist, 4)) for d, dist in resultados]  # distancia coseno -> similitud
 
     def buscar_bm25(self, consulta, k, modelo=None):
@@ -95,14 +101,29 @@ class RecuperadorHibrido:
             resultado.append((self.docs[i], round(float(puntajes[i]), 4)))
         return resultado
 
-    def buscar(self, consulta, k=5, modelo=None, modo="hibrido"):
-        """Devuelve los k chunks más relevantes. modo: "hibrido", "vectorial" o "bm25"."""
-        vect = self.buscar_vectorial(consulta, self.candidatos, modelo) if modo != "bm25" else []
+    def buscar_aprendidos(self, recuerdos, modelo=None):
+        """Fragmentos que citaron las respuestas validadas parecidas, puntuados con la similitud de cada recuerdo."""
+        resultado, vistos = [], set()
+        for r in recuerdos:
+            for fid in r["fragmentos"]:
+                doc = self.por_id.get(fid)  # si el manual se reindexó, el fragmento puede no existir
+                if doc and fid not in vistos and (not modelo or doc.metadata["modelo"] == modelo):
+                    vistos.add(fid)
+                    resultado.append((doc, r["similitud"]))
+        return resultado
+
+    def buscar(self, consulta, k=5, modelo=None, modo="hibrido", vector=None, recuerdos=()):
+        """Devuelve los k chunks más relevantes. modo: "hibrido", "vectorial" o "bm25".
+
+        recuerdos: consultas validadas parecidas (memoria); sus fragmentos entran como una lista más de RRF.
+        """
+        vect = self.buscar_vectorial(consulta, self.candidatos, modelo, vector) if modo != "bm25" else []
         lex = self.buscar_bm25(consulta, self.candidatos, modelo) if modo != "vectorial" else []
+        mem = self.buscar_aprendidos(recuerdos, modelo)
 
         # RRF: cada lista suma 1 / (60 + posición) a los chunks que encontró
         fusion = {}
-        for nombre, lista in (("vectorial", vect), ("bm25", lex)):
+        for nombre, lista in (("vectorial", vect), ("bm25", lex), ("memoria", mem)):
             for posicion, (doc, puntaje) in enumerate(lista, start=1):
                 item = fusion.setdefault(doc.id, {"doc": doc, "rrf": 0.0})
                 item["rrf"] += 1 / (RRF_K + posicion)

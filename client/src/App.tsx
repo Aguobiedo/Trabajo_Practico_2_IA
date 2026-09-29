@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import Sidebar, { type Pagina } from "./components/Sidebar";
+import Aprendizaje from "./pages/Aprendizaje";
 import Chat from "./pages/Chat";
 import Manuales from "./pages/Manuales";
 import type { Estado } from "./types";
 import { useChat, type OpcionesChat } from "./useChat";
 
-const PAGINAS: Pagina[] = ["consultas", "manuales"];
+const PAGINAS: Pagina[] = ["consultas", "manuales", "aprendizaje"];
 
-// Navegación simple por hash (#consultas, #manuales): permite recargar la página actual
+// Navegación simple por hash (#consultas, #manuales, #aprendizaje): permite recargar la página actual
 function paginaDesdeHash(): Pagina {
   const hash = window.location.hash.replace("#", "") as Pagina;
   return PAGINAS.includes(hash) ? hash : "consultas";
@@ -20,8 +21,6 @@ export default function App() {
   const [errorEstado, setErrorEstado] = useState<string | null>(null);
   const [opciones, setOpciones] = useState<OpcionesChat>({ k: 4, manual: null });
   const reintento = useRef<number | undefined>(undefined);
-
-  const chat = useChat();
 
   // Si el server todavía está arrancando o se reinició, se reintenta solo cada 3 s
   const cargarEstado = useCallback(() => {
@@ -38,6 +37,9 @@ export default function App() {
         reintento.current = window.setTimeout(cargarEstado, 3000);
       });
   }, []);
+
+  // cuando cambia la memoria (👍, 👎 u «Olvidar») se actualiza el contador de la barra lateral
+  const chat = useChat(cargarEstado);
 
   useEffect(() => {
     cargarEstado();
@@ -63,6 +65,14 @@ export default function App() {
           <Chat chat={chat} opciones={opciones} setOpciones={setOpciones} manuales={estado?.manuales ?? []} />
         )}
         {pagina === "manuales" && <Manuales onCambio={cargarEstado} />}
+        {pagina === "aprendizaje" && (
+          <Aprendizaje
+            onOlvidada={(id) => {
+              chat.olvidada(id);
+              cargarEstado();
+            }}
+          />
+        )}
       </main>
     </div>
   );

@@ -1,5 +1,8 @@
 """API del Asistente de Mantenimiento con FastAPI. Usa el mismo código que el notebook (paquete asistente).
 
+Las conversaciones no se guardan: el historial vive en el client. Lo que se guarda es lo aprendido,
+es decir, las consultas que el usuario validó con 👍 (colección "memoria" de Chroma).
+
 Ejecutar desde la carpeta server:
     .venv\\Scripts\\python -m uvicorn main:app --port 8000
 """
@@ -20,7 +23,9 @@ from pypdf import PdfReader
 
 from asistente.config import GEMINI_MODEL, MANUALES_DIR, TOP_K, get_llm
 from asistente.ingesta import construir_indice, indexar_manual, leer_front_matter, obtener_vectorstore
-from asistente.rag import a_mensajes, cadena_respuesta, preparar_consulta
+from asistente.memoria import obtener_memoria
+from asistente.rag import (a_mensajes, cadena_respuesta, formatear_validadas, recuperar, respuesta_cortesia,
+                           sin_cortesias)
 from asistente.recuperacion import RecuperadorHibrido, formatear_contexto
 
 _lock = threading.Lock()
@@ -28,7 +33,7 @@ _recursos = None
 
 
 def recursos():
-    """Recuperador y LLM, que se crean una sola vez. Si el índice está vacío, lo construye."""
+    """Recuperador, memoria y LLM, que se crean una sola vez. Si el índice está vacío, lo construye."""
     global _recursos
     with _lock:
         if _recursos is None:
@@ -37,7 +42,7 @@ def recursos():
             vs = obtener_vectorstore()
             if not vs.get(include=[])["ids"]:
                 construir_indice(vs)
-            _recursos = {"recuperador": RecuperadorHibrido(vs), "llm": get_llm()}
+            _recursos = {"recuperador": RecuperadorHibrido(vs), "memoria": obtener_memoria(), "llm": get_llm()}
         return _recursos
 
 
@@ -67,15 +72,17 @@ def mensaje_error(exc):
 
 @app.get("/api/estado")
 def estado():
-    info = {"modelo": GEMINI_MODEL, "top_k": TOP_K, "listo": False, "error": None, "chunks": 0, "manuales": []}
+    info = {"modelo": GEMINI_MODEL, "top_k": TOP_K, "listo": False, "error": None, "chunks": 0, "manuales": [],
+            "aprendidas": 0}
     try:
-        recuperador = recursos()["recuperador"]
+        r = recursos()
     except HTTPException as exc:
         info["error"] = exc.detail
     except Exception as exc:
         info["error"] = mensaje_error(exc)
     else:
-        info.update(listo=True, chunks=len(recuperador.docs), manuales=recuperador.modelos)
+        info.update(listo=True, chunks=len(r["recuperador"].docs), manuales=r["recuperador"].modelos,
+                    aprendidas=len(r["memoria"]))
     return info
 
 
@@ -91,38 +98,79 @@ class Consulta(BaseModel):
     k: int = Field(default=TOP_K, ge=1, le=10)
 
 
-def eventos_consulta(req, recuperador, llm):
+def eventos_consulta(req, recuperador, memoria, llm):
     """Mismos pasos que la cadena RAG del notebook, pero enviando cada parte apenas está lista."""
-    historial = [m.model_dump() for m in req.historial]
-    plan = preparar_consulta(req.mensaje, historial, recuperador, req.manual)
-    yield {"tipo": "plan", **plan}
+    cortesia = respuesta_cortesia(req.mensaje)
+    if cortesia:  # "ok", "gracias"...: respuesta fija, sin búsqueda ni LLM (no gasta tokens)
+        yield {"tipo": "token", "texto": cortesia}
+        return
 
-    docs = recuperador.buscar(plan["consulta"], k=req.k, modelo=plan["manual"])
+    historial = sin_cortesias([m.model_dump() for m in req.historial])
+    r = recuperar(req.mensaje, historial, recuperador, memoria, req.k, req.manual)
+    yield {"tipo": "plan", **r["plan"]}
+    yield {"tipo": "memoria", "recuerdos": [{c: x[c] for c in ("id", "consulta", "manual", "similitud")}
+                                             for x in r["recuerdos"]]}
     yield {"tipo": "fuentes", "fuentes": [
         {"id": d.id, **{c: d.metadata.get(c) for c in ("modelo", "equipo", "archivo", "seccion",
-                                                          "score_vectorial", "score_bm25")},
+                                                          "score_vectorial", "score_bm25", "score_memoria")},
          "contenido": d.page_content.split("\n", 1)[-1]}  # sin el encabezado [equipo | sección]
-        for d in docs]}
+        for d in r["fuentes"]]}
 
-    entrada = {"input": req.mensaje, "chat_history": a_mensajes(historial), "context": formatear_contexto(docs)}
+    entrada = {"input": req.mensaje, "chat_history": a_mensajes(historial),
+               "context": formatear_contexto(r["fuentes"]), "validadas": formatear_validadas(r["recuerdos"])}
     for texto in cadena_respuesta(llm).stream(entrada):
         yield {"tipo": "token", "texto": texto}
 
 
 @app.post("/api/consulta")
 def consulta(req: Consulta):
-    """Responde en streaming: un evento JSON por línea (plan, fuentes, token..., fin)."""
+    """Responde en streaming: un evento JSON por línea (plan, memoria, fuentes, token..., fin)."""
     r = recursos()
 
     def generar():
         try:
-            for ev in eventos_consulta(req, r["recuperador"], r["llm"]):
+            for ev in eventos_consulta(req, r["recuperador"], r["memoria"], r["llm"]):
                 yield json.dumps(ev, ensure_ascii=False) + "\n"
         except Exception as exc:
             yield json.dumps({"tipo": "error", "mensaje": mensaje_error(exc)}, ensure_ascii=False) + "\n"
         yield json.dumps({"tipo": "fin"}) + "\n"
 
     return StreamingResponse(generar(), media_type="application/x-ndjson")
+
+
+# --- Aprendizaje: consultas validadas por el usuario ---
+class ConsultaValidada(BaseModel):
+    id: str = Field(pattern=r"^[\w-]{1,64}$")  # id del mensaje en el client
+    consulta: str = Field(min_length=1, max_length=4000)  # texto que se buscó (plan.consulta)
+    respuesta: str = Field(min_length=1, max_length=12000)
+    fuentes: list[str | None] = Field(default=[], max_length=10)  # ids de los fragmentos, en el orden [1], [2]...
+
+
+@app.get("/api/aprendizaje")
+def listar_aprendizaje():
+    return recursos()["memoria"].listar()
+
+
+@app.post("/api/aprendizaje", status_code=201)
+def aprender(req: ConsultaValidada):
+    """👍: guarda la consulta en la memoria (la vuelve a guardar si ya estaba)."""
+    r = recursos()
+    por_id = r["recuperador"].por_id
+    # el manual de cada fragmento sale del índice, no de lo que manda el client
+    fuentes = [{"id": f, "modelo": por_id[f].metadata["modelo"]} if f in por_id else None for f in req.fuentes]
+    try:
+        recuerdo = r["memoria"].aprender(req.id, req.consulta, req.respuesta, fuentes)
+    except Exception as exc:
+        raise HTTPException(502, mensaje_error(exc))
+    return {"recuerdo": recuerdo, "aprendidas": len(r["memoria"])}
+
+
+@app.delete("/api/aprendizaje/{id}")
+def olvidar(id: str):
+    """👎 o «Olvidar»: quita la consulta de la memoria (si no estaba, no hace nada)."""
+    memoria = recursos()["memoria"]
+    memoria.olvidar([id])
+    return {"aprendidas": len(memoria)}
 
 
 @app.get("/api/manuales")

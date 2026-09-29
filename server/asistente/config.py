@@ -20,11 +20,16 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "900"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "150"))
 TOP_K = int(os.getenv("TOP_K", "4"))  # fragmentos que se envían al modelo
 COLLECTION_NAME = "manuales"
+# Aprendizaje: una consulta validada se reutiliza si su similitud con la nueva supera el umbral
+# (0.88: las paráfrasis medidas dan 0.90 o más, y dos preguntas distintas sobre el aceite del compresor, 0.867)
+UMBRAL_MEMORIA = float(os.getenv("UMBRAL_MEMORIA", "0.88"))
+MAX_RECUERDOS = int(os.getenv("MAX_RECUERDOS", "2"))  # consultas validadas que se usan por pregunta
 
 
 def get_llm():
     return ChatGoogleGenerativeAI(model=GEMINI_MODEL, temperature=TEMPERATURE)
 
 
-def get_embeddings():
-    return GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
+def get_embeddings(task_type=None):
+    """task_type=None usa RETRIEVAL_DOCUMENT para los chunks y RETRIEVAL_QUERY para las consultas."""
+    return GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL, task_type=task_type)

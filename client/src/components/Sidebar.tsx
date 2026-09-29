@@ -1,11 +1,12 @@
-import { AlertTriangle, BookOpen, MessageSquare, RefreshCw, Wrench } from "lucide-react";
+import { AlertTriangle, BookOpen, GraduationCap, MessageSquare, RefreshCw, Wrench } from "lucide-react";
 import type { Estado } from "../types";
 
-export type Pagina = "consultas" | "manuales";
+export type Pagina = "consultas" | "manuales" | "aprendizaje";
 
 const ITEMS: { id: Pagina; titulo: string; icono: typeof MessageSquare }[] = [
   { id: "consultas", titulo: "Consultas", icono: MessageSquare },
   { id: "manuales", titulo: "Manuales", icono: BookOpen },
+  { id: "aprendizaje", titulo: "Aprendizaje", icono: GraduationCap },
 ];
 
 interface Props {
@@ -59,6 +60,10 @@ export default function Sidebar({ pagina, onNavegar, estado, error, onReintentar
             <dt>Índice</dt>
             <dd>
               {estado.chunks} fragmentos · {estado.manuales.length} manuales
+            </dd>
+            <dt>Aprendizaje</dt>
+            <dd>
+              {estado.aprendidas} {estado.aprendidas === 1 ? "consulta validada" : "consultas validadas"}
             </dd>
           </dl>
         )}

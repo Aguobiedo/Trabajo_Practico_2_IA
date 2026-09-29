@@ -1,6 +1,15 @@
 // Cliente HTTP de la API. Todas las rutas son relativas (/api/...): en desarrollo
 // Vite las reenvía al server FastAPI (ver vite.config.ts).
-import type { ConsultaRequest, ContenidoManual, Estado, EventoConsulta, Manual, ManualSubido } from "./types";
+import type {
+  ConsultaAprendida,
+  ConsultaRequest,
+  ConsultaValidada,
+  ContenidoManual,
+  Estado,
+  EventoConsulta,
+  Manual,
+  ManualSubido,
+} from "./types";
 
 const SIN_CONEXION = "No se pudo conectar con el server. ¿Está corriendo en el puerto 8000?";
 
@@ -31,6 +40,16 @@ export const api = {
   verManual: (archivo: string) => pedir<ContenidoManual>(`/api/manuales/${encodeURIComponent(archivo)}`),
   // multipart/form-data: el navegador arma el Content-Type con el boundary
   subirManual: (datos: FormData) => pedir<ManualSubido>("/api/manuales", { method: "POST", body: datos }),
+  // Aprendizaje: 👍 guarda la consulta en la memoria, 👎 o «Olvidar» la quita
+  aprendizaje: () => pedir<ConsultaAprendida[]>("/api/aprendizaje"),
+  aprender: (datos: ConsultaValidada) =>
+    pedir<{ aprendidas: number }>("/api/aprendizaje", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(datos),
+    }),
+  olvidar: (id: string) =>
+    pedir<{ aprendidas: number }>(`/api/aprendizaje/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
 
 /**

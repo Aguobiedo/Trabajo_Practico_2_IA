@@ -1,12 +1,14 @@
-import { AlertTriangle, BookOpen, Bot, User } from "lucide-react";
+import { AlertTriangle, BookOpen, Bot, GraduationCap, ThumbsDown, ThumbsUp, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Fuente, Mensaje, Plan } from "../types";
+import type { Fuente, Mensaje, Plan, Recuerdo, Valoracion } from "../types";
+import { esValorable } from "../useChat";
 
 const ORIGEN: Record<NonNullable<Plan["origen"]>, string> = {
   elegido: "elegido por vos",
   detectado: "detectado en la pregunta",
   contexto: "por el contexto de la conversación",
+  aprendido: "aprendido de una consulta validada",
 };
 
 /** Qué decidió el sistema antes de buscar: en qué manual. */
@@ -25,10 +27,66 @@ function PlanManual({ plan }: { plan: Plan }) {
   );
 }
 
+/** Consultas validadas parecidas que se usaron para responder. */
+function Recuerdos({ recuerdos }: { recuerdos: Recuerdo[] }) {
+  if (!recuerdos.length) return null;
+  const detalle = recuerdos.map((r) => `«${r.consulta}» (similitud ${r.similitud.toFixed(2)})`).join("\n");
+  return (
+    <p className="plan plan-memoria" title={detalle}>
+      <GraduationCap size={13} />
+      Usó {recuerdos.length === 1 ? "1 consulta validada parecida" : `${recuerdos.length} consultas validadas parecidas`}
+      {" · "}similitud {recuerdos[0].similitud.toFixed(2)}
+    </p>
+  );
+}
+
+interface PropsValoracion {
+  mensaje: Mensaje;
+  onValorar: (m: Mensaje, v: Valoracion) => void;
+}
+
+/** 👍 guarda la consulta en la memoria del sistema; 👎 (o volver a tocar 👍) la quita. */
+function Valorar({ mensaje, onValorar }: PropsValoracion) {
+  const { valoracion, guardandoValoracion: guardando } = mensaje;
+  return (
+    <div className="valoracion">
+      <button
+        className={`boton-valorar ${valoracion === "positiva" ? "activo-positivo" : ""}`}
+        onClick={() => onValorar(mensaje, "positiva")}
+        disabled={guardando}
+        aria-pressed={valoracion === "positiva"}
+        title="Respuesta correcta: el asistente la aprende y la usa en consultas parecidas"
+      >
+        <ThumbsUp size={14} />
+      </button>
+      <button
+        className={`boton-valorar ${valoracion === "negativa" ? "activo-negativo" : ""}`}
+        onClick={() => onValorar(mensaje, "negativa")}
+        disabled={guardando}
+        aria-pressed={valoracion === "negativa"}
+        title="Respuesta incorrecta: no se aprende"
+      >
+        <ThumbsDown size={14} />
+      </button>
+      <span className="tenue">
+        {guardando
+          ? "Guardando…"
+          : valoracion === "positiva"
+            ? "Aprendida: se va a usar en consultas parecidas"
+            : valoracion === "negativa"
+              ? "No se va a aprender"
+              : "¿Te sirvió la respuesta?"}
+      </span>
+      {mensaje.errorValoracion && <span className="valoracion-error">{mensaje.errorValoracion}</span>}
+    </div>
+  );
+}
+
 function TarjetaFuente({ fuente, indice }: { fuente: Fuente; indice: number }) {
   const puntajes = [
     fuente.score_vectorial != null && `similitud ${fuente.score_vectorial.toFixed(2)}`,
     fuente.score_bm25 != null && `BM25 ${fuente.score_bm25.toFixed(1)}`,
+    fuente.score_memoria != null && `memoria ${fuente.score_memoria.toFixed(2)}`,
   ].filter(Boolean);
   return (
     <article className="fuente">
@@ -62,7 +120,7 @@ function Fuentes({ fuentes }: { fuentes: Fuente[] }) {
   );
 }
 
-export default function MensajeChat({ mensaje }: { mensaje: Mensaje }) {
+export default function MensajeChat({ mensaje, onValorar }: PropsValoracion) {
   const esUsuario = mensaje.role === "user";
   const escribiendo = mensaje.pendiente && !mensaje.content;
   return (
@@ -70,6 +128,7 @@ export default function MensajeChat({ mensaje }: { mensaje: Mensaje }) {
       <div className="avatar">{esUsuario ? <User size={18} /> : <Bot size={18} />}</div>
       <div className="burbuja">
         {mensaje.plan && <PlanManual plan={mensaje.plan} />}
+        {mensaje.recuerdos && <Recuerdos recuerdos={mensaje.recuerdos} />}
         {escribiendo && (
           <div className="escribiendo" aria-label="Generando respuesta">
             <span />
@@ -89,6 +148,7 @@ export default function MensajeChat({ mensaje }: { mensaje: Mensaje }) {
           </div>
         )}
         {!esUsuario && !mensaje.pendiente && <Fuentes fuentes={mensaje.fuentes ?? []} />}
+        {esValorable(mensaje) && <Valorar mensaje={mensaje} onValorar={onValorar} />}
       </div>
     </div>
   );

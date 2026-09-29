@@ -1,4 +1,4 @@
-import { Send, Square, Trash2 } from "lucide-react";
+import { Plus, Send, Square } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import MensajeChat from "../components/MensajeChat";
 import type { OpcionesChat, useChat } from "../useChat";
@@ -22,7 +22,7 @@ interface Props {
 export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
   const [texto, setTexto] = useState("");
   const finRef = useRef<HTMLDivElement>(null);
-  const { mensajes, enviando, enviar, detener, nuevaConversacion } = chat;
+  const { mensajes, enviando, enviar, detener, nuevaConversacion, valorar } = chat;
 
   // Desplazar al último mensaje mientras llega la respuesta
   const ultimo = mensajes[mensajes.length - 1];
@@ -48,7 +48,6 @@ export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
       <header className="chat-cabecera">
         <div>
           <h1>Consulta de manuales</h1>
-          <p className="tenue">Alarmas, procedimientos, lubricantes, torques e intervalos de mantenimiento, con la fuente citada.</p>
         </div>
         <div className="controles">
           <select
@@ -74,8 +73,12 @@ export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
               onChange={(e) => setOpciones({ ...opciones, k: Math.min(10, Math.max(1, Number(e.target.value) || 1)) })}
             />
           </label>
-          <button className="boton-secundario" onClick={nuevaConversacion} title="Nueva conversación">
-            <Trash2 size={15} /> Nueva
+          <button
+            className="boton-secundario"
+            onClick={nuevaConversacion}
+            title="Nueva conversación (la actual no se guarda; lo validado con 👍 queda aprendido)"
+          >
+            <Plus size={15} /> Nueva
           </button>
         </div>
       </header>
@@ -84,7 +87,10 @@ export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
         {mensajes.length === 0 ? (
           <div className="bienvenida">
             <h2>¿Qué querés consultar?</h2>
-            <p className="tenue">Cada consulta usa una sola llamada al modelo.</p>
+            <p className="tenue">
+              Cada consulta usa una sola llamada al modelo. Marcá 👍 las respuestas correctas: el asistente las aprende y
+              las usa en consultas parecidas.
+            </p>
             <div className="sugerencias">
               {SUGERENCIAS.map((s) => (
                 <button key={s.texto} className="sugerencia" onClick={() => mandar(s.texto)}>
@@ -95,7 +101,7 @@ export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
             </div>
           </div>
         ) : (
-          mensajes.map((m) => <MensajeChat key={m.id} mensaje={m} />)
+          mensajes.map((m) => <MensajeChat key={m.id} mensaje={m} onValorar={valorar} />)
         )}
         <div ref={finRef} />
       </section>
