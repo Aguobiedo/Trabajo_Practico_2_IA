@@ -62,7 +62,7 @@ export default function App() {
         {pagina === "consultas" && (
           <Chat chat={chat} opciones={opciones} setOpciones={setOpciones} manuales={estado?.manuales ?? []} />
         )}
-        {pagina === "manuales" && <Manuales />}
+        {pagina === "manuales" && <Manuales onCambio={cargarEstado} />}
       </main>
     </div>
   );

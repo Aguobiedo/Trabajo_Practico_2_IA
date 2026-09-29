@@ -63,7 +63,6 @@ export default function Sidebar({ pagina, onNavegar, estado, error, onReintentar
           </dl>
         )}
       </section>
-      <p className="pie">LangChain · Gemini · Chroma · FastAPI · React</p>
     </aside>
   );
 }

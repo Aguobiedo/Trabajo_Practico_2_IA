@@ -4,18 +4,22 @@ Ejecutar desde la carpeta server:
     .venv\\Scripts\\python -m uvicorn main:app --port 8000
 """
 
+import io
 import json
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from pypdf import PdfReader
 
 from asistente.config import GEMINI_MODEL, MANUALES_DIR, TOP_K, get_llm
-from asistente.ingesta import construir_indice, leer_front_matter, obtener_vectorstore
+from asistente.ingesta import construir_indice, indexar_manual, leer_front_matter, obtener_vectorstore
 from asistente.rag import a_mensajes, cadena_respuesta, preparar_consulta
 from asistente.recuperacion import RecuperadorHibrido, formatear_contexto
 
@@ -130,6 +134,69 @@ def listar_manuales():
                                                  "archivo": m["archivo"], "chunks": 0})
         item["chunks"] += 1
     return sorted(resumen.values(), key=lambda x: x["modelo"])
+
+
+EXTENSIONES = {".md", ".txt", ".pdf"}
+MAX_BYTES = 10 * 1024 * 1024
+
+
+def texto_de_archivo(nombre, datos):
+    """Texto del archivo subido. Los PDF se convierten a texto plano."""
+    try:
+        if nombre.lower().endswith(".pdf"):
+            return "\n\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(datos)).pages)
+        return datos.decode("utf-8-sig").replace("\r\n", "\n")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "El archivo no está en UTF-8")
+    except Exception:
+        raise HTTPException(400, "No se pudo leer el archivo")
+
+
+@app.post("/api/manuales", status_code=201)
+def subir_manual(archivo: UploadFile = File(...), modelo: str = Form(""), equipo: str = Form(""),
+                 alias: str = Form("")):
+    """Guarda un manual (.md, .txt o .pdf) en data/manuales como .md y lo agrega al índice."""
+    nombre = Path(archivo.filename or "").name
+    if Path(nombre).suffix.lower() not in EXTENSIONES:
+        raise HTTPException(400, "Formato no admitido. Subí un archivo .md, .txt o .pdf")
+    datos = archivo.file.read(MAX_BYTES + 1)
+    if len(datos) > MAX_BYTES:
+        raise HTTPException(413, "El archivo supera los 10 MB")
+    meta, cuerpo = leer_front_matter(texto_de_archivo(nombre, datos))
+    if not cuerpo.strip():
+        raise HTTPException(400, "El archivo no tiene texto (si es un PDF escaneado, no se puede leer)")
+
+    # lo que se completa en el formulario tiene prioridad sobre el encabezado del archivo
+    stem = re.sub(r"[^\w.-]+", "_", Path(nombre).stem).strip("._") or "manual"
+    for clave, valor in (("modelo", modelo), ("equipo", equipo), ("alias", alias)):
+        valor = " ".join(valor.split())  # una sola línea, para no romper el encabezado
+        if valor:
+            meta[clave] = valor
+    meta.setdefault("modelo", stem)
+    meta.setdefault("equipo", meta["modelo"])
+    destino = MANUALES_DIR / f"{stem}.md"
+
+    r = recursos()
+    otro = next((d.metadata["archivo"] for d in r["recuperador"].docs
+                 if d.metadata["modelo"] == meta["modelo"] and d.metadata["archivo"] != destino.name), None)
+    if otro:
+        raise HTTPException(409, f"El modelo {meta['modelo']} ya corresponde al manual {otro}")
+
+    encabezado = "".join(f"{clave}: {valor}\n" for clave, valor in meta.items())
+    with _lock:
+        previo = destino.read_bytes() if destino.exists() else None
+        destino.write_text(f"---\n{encabezado}---\n\n{cuerpo.strip()}\n", encoding="utf-8")
+        try:
+            chunks = indexar_manual(r["recuperador"].vs, destino)
+        except Exception as exc:
+            if previo is None:
+                destino.unlink()
+            else:
+                destino.write_bytes(previo)
+            raise HTTPException(502, mensaje_error(exc))
+        r["recuperador"] = RecuperadorHibrido(r["recuperador"].vs)  # BM25 se rearma con el manual nuevo
+    return {"archivo": destino.name, "modelo": meta["modelo"], "equipo": meta["equipo"], "chunks": chunks,
+            "reemplazado": previo is not None}
 
 
 @app.get("/api/manuales/{archivo}")

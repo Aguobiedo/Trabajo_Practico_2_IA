@@ -23,19 +23,21 @@ def leer_front_matter(texto):
     return meta, texto[m.end():]
 
 
+def cargar_manual(ruta):
+    ruta = Path(ruta)
+    meta, cuerpo = leer_front_matter(ruta.read_text(encoding="utf-8"))
+    # la aclaración "Documento ficticio" no aporta nada técnico
+    cuerpo = "\n".join(l for l in cuerpo.splitlines() if not l.startswith("> Documento ficticio"))
+    return Document(page_content=cuerpo, metadata={
+        "archivo": ruta.name,
+        "modelo": meta.get("modelo", ruta.stem),
+        "equipo": meta.get("equipo", ruta.stem),
+        "alias": meta.get("alias", ""),
+    })
+
+
 def cargar_manuales(directorio=MANUALES_DIR):
-    docs = []
-    for ruta in sorted(Path(directorio).glob("*.md")):
-        meta, cuerpo = leer_front_matter(ruta.read_text(encoding="utf-8"))
-        # la aclaración "Documento ficticio" no aporta nada técnico
-        cuerpo = "\n".join(l for l in cuerpo.splitlines() if not l.startswith("> Documento ficticio"))
-        docs.append(Document(page_content=cuerpo, metadata={
-            "archivo": ruta.name,
-            "modelo": meta.get("modelo", ruta.stem),
-            "equipo": meta.get("equipo", ruta.stem),
-            "alias": meta.get("alias", ""),
-        }))
-    return docs
+    return [cargar_manual(ruta) for ruta in sorted(Path(directorio).glob("*.md"))]
 
 
 splitter_secciones = MarkdownHeaderTextSplitter(headers_to_split_on=[("#", "h1"), ("##", "h2"), ("###", "h3")])
@@ -73,4 +75,17 @@ def construir_indice(vs):
     vs.reset_collection()
     chunks = dividir(cargar_manuales())
     vs.add_documents(chunks, ids=[c.id for c in chunks])
+    return len(chunks)
+
+
+def indexar_manual(vs, ruta):
+    """Agrega un solo manual al índice (reemplaza sus chunks si ya estaba). Devuelve la cantidad de chunks."""
+    anteriores = vs.get(where={"archivo": Path(ruta).name}, include=[])["ids"]
+    chunks = dividir([cargar_manual(ruta)])
+    # primero se agregan (Chroma pisa los ids repetidos) y después se borran los que sobran:
+    # si fallan los embeddings, el índice queda como estaba
+    vs.add_documents(chunks, ids=[c.id for c in chunks])
+    sobrantes = set(anteriores) - {c.id for c in chunks}
+    if sobrantes:
+        vs.delete(ids=list(sobrantes))
     return len(chunks)

@@ -59,6 +59,10 @@ export interface Manual {
   chunks: number;
 }
 
+export interface ManualSubido extends Manual {
+  reemplazado: boolean;
+}
+
 export interface ContenidoManual {
   archivo: string;
   contenido: string;
