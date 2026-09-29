@@ -1,4 +1,4 @@
-"""API de MantenIA con FastAPI. Usa el mismo código que el notebook (paquete asistente).
+"""API del Asistente de Mantenimiento con FastAPI. Usa el mismo código que el notebook (paquete asistente).
 
 Ejecutar desde la carpeta server:
     .venv\\Scripts\\python -m uvicorn main:app --port 8000
@@ -51,7 +51,7 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="MantenIA API", lifespan=lifespan)
+app = FastAPI(title="API del Asistente de Mantenimiento", lifespan=lifespan)
 
 
 def mensaje_error(exc):

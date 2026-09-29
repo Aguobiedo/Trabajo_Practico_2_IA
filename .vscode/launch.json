@@ -21,7 +21,7 @@
     ],
     "compounds": [
         {
-            "name": "MantenIA: server + client",
+            "name": "Asistente de Mantenimiento: server + client",
             "configurations": ["Server (FastAPI :8000)", "Client (Vite :5173)"],
             "stopAll": true
         }

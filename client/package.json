@@ -1,8 +1,8 @@
 {
-  "name": "mantenia-client",
+  "name": "asistente-client",
   "private": true,
   "version": "1.0.0",
-  "description": "Cliente web (React + Vite) de MantenIA, asistente de mantenimiento industrial",
+  "description": "Cliente web (React + Vite) del Asistente de Mantenimiento, asistente de mantenimiento industrial",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -24,7 +24,7 @@ export default function Sidebar({ pagina, onNavegar, estado, error, onReintentar
           <Wrench size={20} />
         </span>
         <div>
-          <strong>MantenIA</strong>
+          <strong>Asistente de Mantenimiento</strong>
           <small>Consulta de manuales técnicos</small>
         </div>
       </div>

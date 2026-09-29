@@ -11,7 +11,7 @@ from .recuperacion import formatear_contexto
 MAX_HISTORIAL = 4  # mensajes anteriores que se le pasan al modelo
 PALABRAS_SEGUIMIENTO = 5  # una pregunta así de corta se toma como continuación de la anterior
 
-SYSTEM_PROMPT = """Sos MantenIA, un asistente para consultar manuales técnicos de máquinas \
+SYSTEM_PROMPT = """Sos un asistente para consultar manuales técnicos de máquinas \
 industriales. Respondés en español, de forma clara y práctica, a operarios y técnicos.
 
 Reglas:

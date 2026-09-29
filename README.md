@@ -1,15 +1,15 @@
-# MantenIA - Consulta de manuales técnicos (TP N°2)
+# Asistente de Mantenimiento - Consulta de manuales técnicos (TP N°2)
 
 Sistema RAG para consultar manuales de máquinas industriales en lenguaje natural, hecho con LangChain, Gemini y Chroma. Para cada pregunta decide en qué manual buscar, recupera los fragmentos relevantes (embeddings + BM25) y responde citando la fuente.
 
-El entregable principal es el notebook `server/TP2_MantenIA.ipynb`. La aplicación web (FastAPI + React) usa el mismo código.
+El entregable principal es el notebook `server/TP2_Asistente.ipynb`. La aplicación web (FastAPI + React) usa el mismo código.
 
 ## Estructura
 
 ```
 React/
 ├── server/
-│   ├── TP2_MantenIA.ipynb   ← notebook del TP
+│   ├── TP2_Asistente.ipynb   ← notebook del TP
 │   ├── main.py              ← API FastAPI
 │   ├── asistente/           ← mismo código que el notebook
 │   │   ├── config.py        ← parámetros y modelos de Gemini
@@ -34,10 +34,10 @@ npm install
 
 ## Notebook
 
-Abrir `server/TP2_MantenIA.ipynb` con el kernel de `server/.venv` y ejecutar todo, o desde `server/`:
+Abrir `server/TP2_Asistente.ipynb` con el kernel de `server/.venv` y ejecutar todo, o desde `server/`:
 
 ```powershell
-.venv\Scripts\python -m nbconvert --to notebook --execute --inplace TP2_MantenIA.ipynb
+.venv\Scripts\python -m nbconvert --to notebook --execute --inplace TP2_Asistente.ipynb
 ```
 
 Hace 17 llamadas al LLM (3 ejemplos y 14 casos de prueba). La primera vez también construye el índice en `chroma_db/`.
@@ -56,4 +56,4 @@ cd client
 npm run dev
 ```
 
-Abrir http://localhost:5173. También se puede usar **F5 → "MantenIA: server + client"** en VS Code.
+Abrir http://localhost:5173. También se puede usar **F5 → "Asistente de Mantenimiento: server + client"** en VS Code.
