@@ -19,7 +19,7 @@ from typing import Literal
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from pypdf import PdfReader
+from markitdown import MarkItDown
 
 from asistente.config import GEMINI_MODEL, MANUALES_DIR, TOP_K, get_llm
 from asistente.ingesta import construir_indice, indexar_manual, leer_front_matter, obtener_vectorstore
@@ -189,15 +189,16 @@ MAX_BYTES = 10 * 1024 * 1024
 
 
 def texto_de_archivo(nombre, datos):
-    """Texto del archivo subido. Los PDF se convierten a texto plano."""
+    """Texto del archivo subido. Los PDF se convierten a Markdown con MarkItDown."""
     try:
         if nombre.lower().endswith(".pdf"):
-            return "\n\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(datos)).pages)
+            resultado = MarkItDown().convert_stream(io.BytesIO(datos), file_extension=".pdf")
+            return resultado.markdown
         return datos.decode("utf-8-sig").replace("\r\n", "\n")
     except UnicodeDecodeError:
         raise HTTPException(400, "El archivo no está en UTF-8")
     except Exception:
-        raise HTTPException(400, "No se pudo leer el archivo")
+        raise HTTPException(400, "No se pudo leer o convertir el archivo")
 
 
 @app.post("/api/manuales", status_code=201)
