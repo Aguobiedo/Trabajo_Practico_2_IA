@@ -70,3 +70,32 @@ npm run dev
 Abrir http://localhost:5173. También se puede usar **F5 → "Asistente de Mantenimiento: server + client"** en VS Code.
 
 En la sección **Manuales** se pueden agregar manuales nuevos (.md, .txt o .pdf, hasta 10 MB). Se guardan como `.md` en `server/data/manuales/` y se indexan en el momento, sin reconstruir todo el índice. Los PDF se convierten a texto plano, así que no conservan las secciones: todos sus fragmentos quedan en la sección "General".
+
+## Despliegue local con Docker
+
+Se puede ejecutar la aplicación en dos contenedores: uno para la API FastAPI y otro para el cliente React servido por Nginx. Docker Compose los conecta y Nginx reenvía las llamadas `/api` al servidor.
+
+Requisitos: Docker Desktop (con Docker Compose) y GNU Make. Desde la carpeta raíz del proyecto:
+
+```powershell
+copy server\.env.example server\.env
+```
+
+Completá `GOOGLE_API_KEY` en `server/.env` y levantá los contenedores:
+
+```sh
+make up
+```
+
+Abrí http://localhost:5173. La API también queda disponible en http://localhost:8000. Los datos de Chroma se guardan en el volumen Docker `chroma_data`, y los manuales subidos se guardan en `server/data/manuales/`.
+
+Comandos disponibles desde la raíz:
+
+```sh
+make status   # estado de los contenedores
+make logs     # logs en vivo
+make restart  # reinicia los servicios
+make down     # detiene y elimina los contenedores
+```
+
+`make down` conserva el volumen de Chroma y los archivos locales de manuales. Para reconstruir las imágenes y arrancar, ejecutá `make up` nuevamente.
