@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, consultaStream } from "./api";
 import type { EventoConsulta, Mensaje, Valoracion } from "./types";
 
@@ -8,6 +8,19 @@ export interface OpcionesChat {
 }
 
 const nuevoId = () => crypto.randomUUID();
+const CLAVE_CONVERSACION = "asistente:conversacion";
+
+function obtenerConversacionId() {
+  try {
+    const guardado = window.localStorage.getItem(CLAVE_CONVERSACION);
+    if (guardado) return guardado;
+    const id = nuevoId();
+    window.localStorage.setItem(CLAVE_CONVERSACION, id);
+    return id;
+  } catch {
+    return nuevoId();
+  }
+}
 
 /** Aplica un evento del stream al mensaje del asistente que se está construyendo. */
 function aplicarEvento(m: Mensaje, ev: EventoConsulta): Mensaje {
@@ -32,14 +45,34 @@ export const esValorable = (m: Mensaje) =>
   m.role === "assistant" && !m.pendiente && !m.interrumpida && !m.error && !!m.plan && !!m.content;
 
 /**
- * Estado y acciones del chat. Vive en App para que la conversación no se pierda al cambiar de página.
- * La conversación no se guarda en el server: solo lo que se valida con 👍 pasa a la memoria del sistema.
+ * Estado y acciones del chat. El historial activo se guarda en Redis por conversacionId.
  * onAprendizaje: avisa que cambió la memoria (para actualizar la barra lateral).
  */
 export function useChat(onAprendizaje?: () => void) {
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+  const [conversacionId, setConversacionId] = useState(obtenerConversacionId);
+  const [cargandoHistorial, setCargandoHistorial] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const controlador = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    setCargandoHistorial(true);
+    api
+      .conversacion(conversacionId)
+      .then((guardados) => {
+        if (vigente) setMensajes(guardados);
+      })
+      .catch(() => {
+        if (vigente) setMensajes([]);
+      })
+      .finally(() => {
+        if (vigente) setCargandoHistorial(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [conversacionId]);
 
   const actualizar = (id: string, cambio: (m: Mensaje) => Mensaje) =>
     setMensajes((prev) => prev.map((m) => (m.id === id ? cambio(m) : m)));
@@ -47,17 +80,13 @@ export function useChat(onAprendizaje?: () => void) {
   const enviar = useCallback(
     async (texto: string, opciones: OpcionesChat) => {
       const pregunta = texto.trim();
-      if (!pregunta || enviando) return;
+      if (!pregunta || enviando || cargandoHistorial) return;
 
-      // La conversación previa viaja en cada consulta: el server no guarda estado
-      const historial = mensajes
-        .filter((m) => !m.error && !m.pendiente && m.content)
-        .map(({ role, content }) => ({ role, content }));
-
+      const idUsuario = nuevoId();
       const idRespuesta = nuevoId();
       setMensajes((prev) => [
         ...prev,
-        { id: nuevoId(), role: "user", content: pregunta },
+        { id: idUsuario, role: "user", content: pregunta },
         { id: idRespuesta, role: "assistant", content: "", pendiente: true, fuentes: [] },
       ]);
       setEnviando(true);
@@ -66,7 +95,14 @@ export function useChat(onAprendizaje?: () => void) {
       let completa = false; // si se detiene la generación no llega "fin" y la respuesta no se puede validar
       try {
         const eventos = consultaStream(
-          { mensaje: pregunta, historial, manual: opciones.manual, k: opciones.k },
+          {
+            mensaje: pregunta,
+            conversacion_id: conversacionId,
+            id_usuario: idUsuario,
+            id_asistente: idRespuesta,
+            manual: opciones.manual,
+            k: opciones.k,
+          },
           controlador.current.signal,
         );
         for await (const ev of eventos) {
@@ -81,14 +117,22 @@ export function useChat(onAprendizaje?: () => void) {
         controlador.current = null;
       }
     },
-    [enviando, mensajes],
+    [cargandoHistorial, conversacionId, enviando],
   );
 
   const detener = useCallback(() => controlador.current?.abort(), []);
 
   const nuevaConversacion = useCallback(() => {
     controlador.current?.abort();
+    setCargandoHistorial(true);
     setMensajes([]);
+    const id = nuevoId();
+    setConversacionId(id);
+    try {
+      window.localStorage.setItem(CLAVE_CONVERSACION, id);
+    } catch {
+      // La conversación sigue funcionando en memoria aunque el navegador no permita localStorage.
+    }
   }, []);
 
   /** 👍 / 👎. Volver a tocar el mismo botón quita la valoración. */
@@ -128,5 +172,5 @@ export function useChat(onAprendizaje?: () => void) {
     setMensajes((prev) => prev.map((m) => (m.id === id && m.valoracion === "positiva" ? { ...m, valoracion: null } : m)));
   }, []);
 
-  return { mensajes, enviando, enviar, detener, nuevaConversacion, valorar, olvidada };
+  return { mensajes, enviando, cargandoHistorial, enviar, detener, nuevaConversacion, valorar, olvidada };
 }

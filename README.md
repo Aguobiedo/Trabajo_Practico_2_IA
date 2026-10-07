@@ -24,13 +24,15 @@ Trabajo_Practico_2_IA/
 
 ## Aprendizaje
 
-Las conversaciones **no se guardan**: el historial vive en el navegador y se descarta con «Nueva». Lo que se guarda es lo aprendido. Cuando el usuario marca una respuesta con 👍, se guardan en la colección `memoria` de Chroma (`server/chroma_db/`) la pregunta, la respuesta y los fragmentos que citó. Ante una pregunta parecida (similitud ≥ `UMBRAL_MEMORIA`, 0,88 por defecto), el sistema:
+El historial de la conversación activa se guarda en Redis durante 30 días por defecto y se recupera al volver a abrir la aplicación en el mismo navegador. «Nueva» inicia otra conversación; no borra las anteriores. El historial sirve como contexto para las siguientes respuestas. Además, cuando el usuario marca una respuesta con 👍, se guardan en la colección `memoria` de Chroma (`server/chroma_db/`) la pregunta, la respuesta y los fragmentos que citó. Ante una pregunta parecida (similitud ≥ `UMBRAL_MEMORIA`, 0,88 por defecto), el sistema:
 
 1. usa el manual de esa consulta si la pregunta no nombra ninguna máquina;
 2. suma sus fragmentos a la búsqueda híbrida como una lista más de RRF;
 3. le pasa la respuesta validada al LLM como ejemplo.
 
 👎 no se aprende, y si la consulta estaba aprendida la quita. En la página **Aprendizaje** se ve lo aprendido y se puede olvidar cada consulta.
+
+`agent-memory.md` describe Redis Agent Memory, que se ofrece como servicio administrado en Redis Cloud o mediante un despliegue autogestionado en Kubernetes. Un contenedor Redis local por sí solo no implementa sus resúmenes automáticos ni la extracción y búsqueda semántica de recuerdos a largo plazo. Esta aplicación usa Redis local para persistir el historial de sesiones; el aprendizaje validado sigue guardándose en Chroma.
 
 ## Instalación
 
@@ -55,6 +57,8 @@ Hace 31 llamadas al LLM (3 ejemplos, 14 casos de prueba y 14 de la evaluación d
 
 ## Aplicación web
 
+Para ejecutar el server y el client fuera de Docker, iniciá primero Redis desde la raíz del proyecto con `make redis`. El server lee `REDIS_URL` de `server/.env` (por defecto `redis://localhost:6379/0`).
+
 Dos terminales:
 
 ```powershell
@@ -73,7 +77,7 @@ En la sección **Manuales** se pueden agregar manuales nuevos (.md, .txt o .pdf,
 
 ## Despliegue local con Docker
 
-Se puede ejecutar la aplicación en dos contenedores: uno para la API FastAPI y otro para el cliente React servido por Nginx. Docker Compose los conecta y Nginx reenvía las llamadas `/api` al servidor.
+Se puede ejecutar la aplicación en tres contenedores: la API FastAPI, el cliente React servido por Nginx y Redis para el historial de conversaciones. Docker Compose los conecta y Nginx reenvía las llamadas `/api` al servidor.
 
 Requisitos: Docker Desktop (con Docker Compose) y GNU Make. Desde la carpeta raíz del proyecto:
 
@@ -87,7 +91,9 @@ Completá `GOOGLE_API_KEY` en `server/.env` y levantá los contenedores:
 make up
 ```
 
-Abrí http://localhost:5173. La API también queda disponible en http://localhost:8000. Los datos de Chroma se guardan en el volumen Docker `chroma_data`, y los manuales subidos se guardan en `server/data/manuales/`.
+En Windows, si GNU Make está instalado como MinGW, usá `mingw32-make up` (y el mismo prefijo para los demás comandos).
+
+Abrí http://localhost:5173. La API también queda disponible en http://localhost:8000. Los datos de Chroma y Redis se guardan en los volúmenes Docker `chroma_data` y `redis_data`; los manuales subidos se guardan en `server/data/manuales/`. Redis conserva cada historial por 30 días, configurable con `CONVERSATION_TTL_SECONDS` en `server/.env`.
 
 Comandos disponibles desde la raíz:
 
@@ -96,6 +102,7 @@ make status   # estado de los contenedores
 make logs     # logs en vivo
 make restart  # reinicia los servicios
 make down     # detiene y elimina los contenedores
+make redis    # inicia solo Redis para ejecutar server y client fuera de Docker
 ```
 
-`make down` conserva el volumen de Chroma y los archivos locales de manuales. Para reconstruir las imágenes y arrancar, ejecutá `make up` nuevamente.
+`make down` conserva los volúmenes de Chroma y Redis, además de los archivos locales de manuales. Para reconstruir las imágenes y arrancar, ejecutá `make up` nuevamente.

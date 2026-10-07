@@ -1,7 +1,7 @@
-.PHONY: help up down restart logs status build
+.PHONY: help up down restart logs status build redis
 
 help:
-	@echo "Targets: up, down, restart, logs, status, build"
+	@echo "Targets: up, down, restart, logs, status, build, redis"
 
 up:
 	docker compose up --build -d
@@ -20,3 +20,6 @@ status:
 
 build:
 	docker compose build
+
+redis:
+	docker compose up -d redis
