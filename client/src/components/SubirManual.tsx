@@ -3,12 +3,12 @@ import { AlertTriangle, CloudUpload, FileText, X } from "lucide-react";
 import { api } from "../api";
 import type { ManualSubido } from "../types";
 
-const EXTENSIONES = [".md", ".txt", ".pdf"];
+const EXTENSIONES = [".md", ".txt", ".pdf", ".jpg", ".jpeg", ".png"];
 const MAX_BYTES = 10 * 1024 * 1024; // mismo límite que el server
 
 function validar(archivo: File): string | null {
   const nombre = archivo.name.toLowerCase();
-  if (!EXTENSIONES.some((ext) => nombre.endsWith(ext))) return "Formato no admitido. Subí un archivo .md, .txt o .pdf";
+  if (!EXTENSIONES.some((ext) => nombre.endsWith(ext))) return "Formato no admitido. Subí un archivo .md, .txt, .pdf, .jpg, .jpeg o .png";
   if (archivo.size > MAX_BYTES) return "El archivo supera los 10 MB";
   return null;
 }
@@ -110,7 +110,7 @@ export default function SubirManual({ onSubido, onCerrar }: Props) {
           <span>
             <strong>Arrastrá un archivo</strong> o hacé clic para elegirlo
           </span>
-          <small className="tenue">MD, TXT o PDF · hasta 10 MB</small>
+          <small className="tenue">MD, TXT, PDF, JPG o PNG · hasta 10 MB</small>
           <input
             ref={inputArchivo}
             type="file"

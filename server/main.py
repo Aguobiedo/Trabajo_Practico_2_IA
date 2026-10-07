@@ -18,6 +18,7 @@ from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from openai import OpenAI
 from pydantic import BaseModel, Field
 from markitdown import MarkItDown
 
@@ -184,30 +185,48 @@ def listar_manuales():
     return sorted(resumen.values(), key=lambda x: x["modelo"])
 
 
-EXTENSIONES = {".md", ".txt", ".pdf"}
+EXTENSIONES = {".md", ".txt", ".pdf", ".jpg", ".jpeg", ".png"}
 MAX_BYTES = 10 * 1024 * 1024
 
 
 def texto_de_archivo(nombre, datos):
-    """Texto del archivo subido. Los PDF se convierten a Markdown con MarkItDown."""
+    """Texto del archivo subido. PDF e imágenes se convierten a Markdown con MarkItDown."""
     try:
-        if nombre.lower().endswith(".pdf"):
-            resultado = MarkItDown().convert_stream(io.BytesIO(datos), file_extension=".pdf")
+        extension = Path(nombre).suffix.lower()
+        if extension == ".pdf":
+            resultado = MarkItDown().convert_stream(io.BytesIO(datos), file_extension=extension)
+            return resultado.markdown
+        if extension in {".jpg", ".jpeg", ".png"}:
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise HTTPException(503, "Falta GOOGLE_API_KEY para describir imágenes")
+            cliente = OpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+            resultado = MarkItDown(
+                llm_client=cliente,
+                llm_model=GEMINI_MODEL,
+                llm_prompt=("Describe la imagen en Markdown con detalle útil para un manual técnico. "
+                            "Transcribe el texto legible y conserva nombres de piezas, etiquetas, "
+                            "valores y pasos visibles. Devuelve solo el contenido Markdown."),
+            ).convert_stream(io.BytesIO(datos), file_extension=extension)
             return resultado.markdown
         return datos.decode("utf-8-sig").replace("\r\n", "\n")
+    except HTTPException:
+        raise
     except UnicodeDecodeError:
         raise HTTPException(400, "El archivo no está en UTF-8")
     except Exception:
+        if Path(nombre).suffix.lower() in {".jpg", ".jpeg", ".png"}:
+            raise HTTPException(502, "No se pudo convertir la imagen a Markdown")
         raise HTTPException(400, "No se pudo leer o convertir el archivo")
 
 
 @app.post("/api/manuales", status_code=201)
 def subir_manual(archivo: UploadFile = File(...), modelo: str = Form(""), equipo: str = Form(""),
                  alias: str = Form("")):
-    """Guarda un manual (.md, .txt o .pdf) en data/manuales como .md y lo agrega al índice."""
+    """Guarda un manual o una imagen en data/manuales como .md y lo agrega al índice."""
     nombre = Path(archivo.filename or "").name
     if Path(nombre).suffix.lower() not in EXTENSIONES:
-        raise HTTPException(400, "Formato no admitido. Subí un archivo .md, .txt o .pdf")
+        raise HTTPException(400, "Formato no admitido. Subí un archivo .md, .txt, .pdf, .jpg, .jpeg o .png")
     datos = archivo.file.read(MAX_BYTES + 1)
     if len(datos) > MAX_BYTES:
         raise HTTPException(413, "El archivo supera los 10 MB")

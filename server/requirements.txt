@@ -16,3 +16,4 @@ fastapi==0.141.1
 uvicorn[standard]==0.54.0
 python-multipart==0.0.32
 markitdown[pdf]==0.1.8
+openai==2.52.0
