@@ -9,6 +9,7 @@ import type {
   EventoConsulta,
   Manual,
   ManualSubido,
+  Mensaje,
 } from "./types";
 
 const SIN_CONEXION = "No se pudo conectar con el server. ¿Está corriendo en el puerto 8000?";
@@ -36,6 +37,7 @@ async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   estado: () => pedir<Estado>("/api/estado"),
+  conversacion: (id: string) => pedir<Mensaje[]>(`/api/conversaciones/${encodeURIComponent(id)}`),
   manuales: () => pedir<Manual[]>("/api/manuales"),
   verManual: (archivo: string) => pedir<ContenidoManual>(`/api/manuales/${encodeURIComponent(archivo)}`),
   // multipart/form-data: el navegador arma el Content-Type con el boundary

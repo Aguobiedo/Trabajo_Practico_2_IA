@@ -1,7 +1,7 @@
 """API del Asistente de Mantenimiento con FastAPI. Usa el mismo código que el notebook (paquete asistente).
 
-Las conversaciones no se guardan: el historial vive en el client. Lo que se guarda es lo aprendido,
-es decir, las consultas que el usuario validó con 👍 (colección "memoria" de Chroma).
+El historial de conversación se guarda en Redis. También se guardan las respuestas que el usuario
+validó con 👍 en la colección "memoria" de Chroma.
 
 Ejecutar desde la carpeta server:
     .venv\\Scripts\\python -m uvicorn main:app --port 8000
@@ -15,11 +15,14 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
+from redis import Redis
+from redis.exceptions import RedisError
 
 from asistente.config import GEMINI_MODEL, MANUALES_DIR, TOP_K, get_llm
 from asistente.ingesta import construir_indice, indexar_manual, leer_front_matter, obtener_vectorstore
@@ -30,6 +33,24 @@ from asistente.recuperacion import RecuperadorHibrido, formatear_contexto
 
 _lock = threading.Lock()
 _recursos = None
+_redis = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True,
+                        socket_connect_timeout=3, socket_timeout=3)
+_conversation_ttl = max(1, int(os.getenv("CONVERSATION_TTL_SECONDS", "2592000")))
+_max_conversation_messages = 200
+_history_messages_for_context = 40
+
+
+def conversation_key(conversation_id):
+    return f"conversation:{conversation_id}"
+
+
+def load_conversation(conversation_id):
+    """Loads recent saved events for both the UI and the next LLM turn."""
+    try:
+        encoded = _redis.lrange(conversation_key(conversation_id), -_max_conversation_messages, -1)
+        return [json.loads(event) for event in encoded]
+    except RedisError as exc:
+        raise HTTPException(503, "No se pudo conectar con Redis para cargar la conversación") from exc
 
 
 def recursos():
@@ -93,7 +114,10 @@ class MensajeHistorial(BaseModel):
 
 class Consulta(BaseModel):
     mensaje: str = Field(min_length=1, max_length=2000)
-    historial: list[MensajeHistorial] = []  # la conversación la guarda el client
+    historial: list[MensajeHistorial] = []  # se completa desde Redis al iniciar la consulta
+    conversacion_id: UUID = Field(default_factory=uuid4)
+    id_usuario: str = Field(default_factory=lambda: str(uuid4()), pattern=r"^[\w-]{1,64}$")
+    id_asistente: str = Field(default_factory=lambda: str(uuid4()), pattern=r"^[\w-]{1,64}$")
     manual: str | None = None  # None = el sistema detecta el manual
     k: int = Field(default=TOP_K, ge=1, le=10)
 
@@ -126,16 +150,49 @@ def eventos_consulta(req, recuperador, memoria, llm):
 def consulta(req: Consulta):
     """Responde en streaming: un evento JSON por línea (plan, memoria, fuentes, token..., fin)."""
     r = recursos()
+    mensajes_guardados = load_conversation(req.conversacion_id)
+    req.historial = [MensajeHistorial(role=m["role"], content=m["content"])
+                     for m in mensajes_guardados[-_history_messages_for_context:]]
 
     def generar():
+        respuesta = {"id": req.id_asistente, "role": "assistant", "content": "", "fuentes": [], "recuerdos": []}
+        persistir = True
         try:
             for ev in eventos_consulta(req, r["recuperador"], r["memoria"], r["llm"]):
+                if ev["tipo"] == "plan":
+                    respuesta["plan"] = {k: ev[k] for k in ("consulta", "manual", "origen")}
+                elif ev["tipo"] == "memoria":
+                    respuesta["recuerdos"] = ev["recuerdos"]
+                elif ev["tipo"] == "fuentes":
+                    respuesta["fuentes"] = ev["fuentes"]
+                elif ev["tipo"] == "token":
+                    respuesta["content"] += ev["texto"]
+                elif ev["tipo"] == "error":
+                    persistir = False
                 yield json.dumps(ev, ensure_ascii=False) + "\n"
+            if persistir:
+                pregunta = {"id": req.id_usuario, "role": "user", "content": req.mensaje}
+                pipe = _redis.pipeline(transaction=True)
+                pipe.rpush(conversation_key(req.conversacion_id),
+                           json.dumps(pregunta, ensure_ascii=False), json.dumps(respuesta, ensure_ascii=False))
+                pipe.ltrim(conversation_key(req.conversacion_id), -_max_conversation_messages, -1)
+                pipe.expire(conversation_key(req.conversacion_id), _conversation_ttl)
+                pipe.execute()
+        except RedisError:
+            yield json.dumps({"tipo": "error", "mensaje": "No se pudo guardar la conversación en Redis"},
+                             ensure_ascii=False) + "\n"
         except Exception as exc:
+            persistir = False
             yield json.dumps({"tipo": "error", "mensaje": mensaje_error(exc)}, ensure_ascii=False) + "\n"
         yield json.dumps({"tipo": "fin"}) + "\n"
 
     return StreamingResponse(generar(), media_type="application/x-ndjson")
+
+
+@app.get("/api/conversaciones/{conversacion_id}")
+def obtener_conversacion(conversacion_id: UUID):
+    """Returns the saved messages for the active browser conversation."""
+    return load_conversation(conversacion_id)
 
 
 # --- Aprendizaje: consultas validadas por el usuario ---

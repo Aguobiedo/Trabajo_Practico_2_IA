@@ -22,7 +22,7 @@ interface Props {
 export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
   const [texto, setTexto] = useState("");
   const finRef = useRef<HTMLDivElement>(null);
-  const { mensajes, enviando, enviar, detener, nuevaConversacion, valorar } = chat;
+  const { mensajes, enviando, cargandoHistorial, enviar, detener, nuevaConversacion, valorar } = chat;
 
   // Desplazar al último mensaje mientras llega la respuesta
   const ultimo = mensajes[mensajes.length - 1];
@@ -31,7 +31,7 @@ export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
   }, [mensajes.length, ultimo?.content]);
 
   const mandar = (t: string) => {
-    if (!t.trim() || enviando) return;
+    if (!t.trim() || enviando || cargandoHistorial) return;
     enviar(t, opciones);
     setTexto("");
   };
@@ -76,7 +76,7 @@ export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
           <button
             className="boton-secundario"
             onClick={nuevaConversacion}
-            title="Nueva conversación (la actual no se guarda; lo validado con 👍 queda aprendido)"
+            title="Nueva conversación (la actual queda guardada en Redis)"
           >
             <Plus size={15} /> Nueva
           </button>
@@ -120,7 +120,7 @@ export default function Chat({ chat, opciones, setOpciones, manuales }: Props) {
             <Square size={18} />
           </button>
         ) : (
-          <button className="boton-enviar" onClick={() => mandar(texto)} disabled={!texto.trim()} title="Enviar (Enter)">
+          <button className="boton-enviar" onClick={() => mandar(texto)} disabled={!texto.trim() || cargandoHistorial} title="Enviar (Enter)">
             <Send size={18} />
           </button>
         )}
