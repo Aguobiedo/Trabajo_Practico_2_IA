@@ -55,7 +55,9 @@ export type EventoConsulta =
 
 export interface ConsultaRequest {
   mensaje: string;
-  historial: { role: "user" | "assistant"; content: string }[];
+  conversacion_id: string;
+  id_usuario: string;
+  id_asistente: string;
   manual: string | null;
   k: number;
 }
