@@ -1,7 +1,8 @@
 """Aprendizaje: memoria de las consultas que el usuario validó (👍).
 
-No se guardan las conversaciones, solo cada pregunta validada con su respuesta y los
-fragmentos del manual que esa respuesta citó. Ante una pregunta parecida, la memoria sirve para:
+No se aprende de todas las conversaciones (su historial se guarda aparte, en Redis), solo de cada
+pregunta validada, con su respuesta y los fragmentos del manual que esa respuesta citó.
+Ante una pregunta parecida, la memoria sirve para:
 1. elegir el manual cuando ninguna regla lo decidió (origen "aprendido");
 2. sumar esos fragmentos a la búsqueda híbrida como una tercera lista de RRF;
 3. pasarle al LLM las respuestas validadas como ejemplos.

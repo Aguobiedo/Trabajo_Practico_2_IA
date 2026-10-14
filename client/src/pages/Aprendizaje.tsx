@@ -51,7 +51,7 @@ export default function Aprendizaje({ onOlvidada }: Props) {
         <div>
           <h1>Aprendizaje</h1>
           <p className="tenue">
-            Consultas que marcaste con 👍. Las conversaciones no se guardan: el asistente solo recuerda estas preguntas
+            Consultas que marcaste con 👍. El historial de las conversaciones no se usa para aprender: el asistente solo recuerda estas preguntas
             con su respuesta. Ante una consulta parecida las usa para elegir el manual, priorizar los fragmentos que
             sirvieron y como ejemplo para el modelo.
           </p>
